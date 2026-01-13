@@ -9,7 +9,7 @@ Plug 'junegunn/vim-easy-align'
 Plug 'https://github.com/junegunn/vim-github-dashboard.git'
 
 " Multiple Plug commands can be written in a single line using | separators
-Plug 'SirVer/ultisnips'  | Plug 'honza/vim-snippets'
+" Plug 'SirVer/ultisnips'  | Plug 'honza/vim-snippets'
 
 " On-demand loading
 " Plug 'preservim/nerdtree', { 'on': 'NERDTreeToggle' }
@@ -52,6 +52,9 @@ Plug 'mbbill/undotree'
 
 Plug 'prabirshrestha/vim-lsp'
 Plug 'mattn/vim-lsp-settings'
+Plug 'prabirshrestha/asyncomplete.vim'
+Plug 'prabirshrestha/asyncomplete-lsp.vim'
+
 " Plug 'vim-latex/vim-latex'
 call plug#end()
 
@@ -365,3 +368,43 @@ augroup DiffNoCursorline
   " When leaving diff mode, restore cursorline
   autocmd OptionSet diff if !&l:diff | setlocal cursorline | endif
 augroup END
+
+
+
+"================= Async complete setup =================
+set completeopt=menu,noinsert
+inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
+inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+inoremap <expr> <cr>    pumvisible() ? asyncomplete#close_popup() : "\<cr>"
+let g:asyncomplete_auto_popup = 0
+
+
+function! s:ACRefresh() abort
+  call asyncomplete#force_refresh()
+  return ''
+endfunction
+
+inoremap <silent> <BS>  <BS><C-r>=<SID>ACRefresh()<CR>
+inoremap <silent> <C-h> <BS><C-r>=<SID>ACRefresh()<CR>
+
+function! s:AsynReopenAfterDelete() abort
+  call timer_start(1, {-> feedkeys(asyncomplete#force_refresh(), 'm')})
+  return ''
+endfunction
+
+inoremap <silent><expr> <BS>
+      \ pumvisible()
+      \ ? "\<BS>\<C-r>=<SID>AsynReopenAfterDelete()\<CR>"
+      \ : "\<BS>"
+
+inoremap <silent><expr> <C-h>
+      \ pumvisible()
+      \ ? "\<BS>\<C-r>=<SID>AsynReopenAfterDelete()\<CR>"
+      \ : "\<BS>"
+
+inoremap <silent><expr> <C-w>
+      \ pumvisible()
+      \ ? "\<C-w>\<C-r>=<SID>AsynReopenAfterDelete()\<CR>"
+      \ : "\<C-w>"
+
+"================= Async complete setup (END) =================
