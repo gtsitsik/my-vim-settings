@@ -294,6 +294,8 @@ hi! link diffAdded String
 "
 " This is needed for some reason: {{{
 
-let &background = s:style
-
+" TODO: This doesn't work when s:style is not dark or light
+" let &background = s:style
+"
+let g:_style = s:style
 " }}}
