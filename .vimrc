@@ -373,6 +373,7 @@ augroup END
 
 "================= Async complete setup =================
 set completeopt=menu,noinsert
+inoremap <silent> <leader><Tab> <C-x><C-o>
 inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
 inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 inoremap <expr> <cr>    pumvisible() ? asyncomplete#close_popup() : "\<cr>"
