@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 git clone --bare https://github.com/gtsitsik/my-vim-settings.git "$HOME/.dotfiles"
 git --git-dir=$HOME/.dotfiles --work-tree=$HOME checkout
-a='gitc(){ git --git-dir=\$HOME/.dotfiles --work-tree=\$HOME "$@" }'
+a='gitc(){ git --git-dir=\$HOME/.dotfiles --work-tree=\$HOME "$@" ; }'
 grep -Fq -- "$a" ~/.bashrc || { echo "$a" >> ~/.bashrc; source ~/.bashrc; }
 gitc config --local status.showUntrackedFiles no
 curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
