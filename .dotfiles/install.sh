@@ -10,4 +10,3 @@ curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
 vim -es -u ~/.vimrc -i NONE +"PlugInstall --sync"  +qa
 vim +"set ft=python" +"LspInstallServer! ruff"
 vim +"set ft=python" +"LspInstallServer! basedpyright-langserver"
-reset
