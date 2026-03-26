@@ -1,6 +1,4 @@
 ## Installation
 
 ```bash
-git clone --bare https://github.com/gtsitsik/my-vim-settings.git "$HOME/.dotfiles"
-git --git-dir=$HOME/.dotfiles --work-tree=$HOME checkout
-source $HOME/.dotfiles/install.sh
+set -e curl -s -S -L https://raw.githubusercontent.com/gtsitsik/my-vim-settings/refs/heads/main/.dotfiles/install.sh | bash
