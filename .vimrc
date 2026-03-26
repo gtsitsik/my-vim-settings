@@ -55,8 +55,16 @@ Plug 'mattn/vim-lsp-settings'
 Plug 'prabirshrestha/asyncomplete.vim'
 Plug 'prabirshrestha/asyncomplete-lsp.vim'
 
+Plug 'puremourning/vimspector'
 " Plug 'vim-latex/vim-latex'
 call plug#end()
+
+
+let &t_ti.="\e[1 q"
+let &t_SI.="\e[5 q"
+let &t_EI.="\e[1 q"
+let &t_te.="\e[0 q"
+
 
 nmap <F6> :IndentLinesToggle<CR>
 nmap <Down> <C-e>
@@ -72,7 +80,10 @@ set colorcolumn=+1
 "set paste
 set hidden " allows modified buffers to stay in the background
 set confirm " provides actions when quitting a modified buffer
-set showcmd " show commands as they are being written, at the bottom right
+set showcmd " show normal commands as they are being typed, at the bottom right
+set wildmenu " show selection menu when pressing tab to autocomplete in command-line mode
+set incsearch " start searching immediately without pressing enter
+set linebreak " visual wrapping wraps only entire words
 
 set termguicolors     " enable true colors support
 "let ayucolor="light"  " for light version of theme
@@ -143,7 +154,7 @@ endfunction
 function! HighlightCurrentSearchUnmatch()
     match CurrentSearchUnmatch /\%#\v/
 endfunction
-noremap <leader>s :noh<CR>:call HighlightCurrentSearchUnmatch()<CR>
+noremap <silent> <leader>s :noh<CR>:call HighlightCurrentSearchUnmatch()<CR>
 noremap n n:call HighlightCurrentSearchMatch()<CR>
 
 " Enable UltiSnips and set Tab key to trigger snippets
@@ -314,13 +325,16 @@ function! s:on_lsp_buffer_enabled() abort
     setlocal omnifunc=lsp#complete
     setlocal signcolumn=yes
 
-    let l:cap = lsp#get_server_capabilities('ruff')
-    if !empty(l:cap)
-      let l:cap.hoverProvider = v:false
+    if &filetype ==# 'python'
+        let l:cap = lsp#get_server_capabilities('ruff')
+        if !empty(l:cap)
+          let l:cap.hoverProvider = v:false
+        endif
     endif
 
     if exists('+tagfunc') | setlocal tagfunc=lsp#tagfunc | endif
     nmap <buffer> gd <plug>(lsp-definition)
+    nmap <buffer> gD <plug>(lsp-document-diagnostics)
     nmap <buffer> gs <plug>(lsp-document-symbol-search)
     nmap <buffer> gS <plug>(lsp-workspace-symbol-search)
     nmap <buffer> gr <plug>(lsp-references)
@@ -330,7 +344,7 @@ function! s:on_lsp_buffer_enabled() abort
     nmap <buffer> [g <plug>(lsp-previous-diagnostic)
     nmap <buffer> ]g <plug>(lsp-next-diagnostic)
     nmap <buffer> K <plug>(lsp-hover)
-
+    nnoremap <buffer> <leader>b <Cmd>silent w \| LspDocumentBuild<CR>
     nnoremap <buffer> <expr><leader>d lsp#scroll(+4)
     nnoremap <buffer> <expr><leader>u lsp#scroll(-4)
 
@@ -409,3 +423,11 @@ inoremap <silent><expr> <C-w>
       \ : "\<C-w>"
 
 "================= Async complete setup (END) =================
+
+
+"================= QuickFix list autojump =================
+augroup QuickFix
+ au FileType qf nnoremap <buffer> <silent> j :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> j<cr>zv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
+ au FileType qf nnoremap <buffer> <silent> k :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> k<cr>zv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
+augroup END
+"================= QuickFix list autojump (END) =================
