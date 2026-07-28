@@ -60,14 +60,14 @@ Plug 'puremourning/vimspector'
 call plug#end()
 
 
-let &t_ti.="\e[1 q"
-let &t_SI.="\e[5 q"
-let &t_EI.="\e[1 q"
-let &t_te.="\e[0 q"
+
+let &t_ti.="\e[2 q"
+let &t_SI.="\e[2 q"
+let &t_EI.="\e[2 q"
+let &t_te.="\e[2 q"
 
 
 nmap <F6> :IndentLinesToggle<CR>
-nmap <Down> <C-e>
 call togglebg#map("<F5>")
 set foldmethod=syntax
 
@@ -105,17 +105,21 @@ augroup END
 autocmd BufRead,BufNewFile COMMIT_EDITMSG set textwidth=72
 
 
+inoremap <expr> <C-c> <SID>test_ctrl_c()
+"
 " Autocomplete matching pairs
 inoremap [ []<Left>
 inoremap ( ()<Left>
 inoremap ' ''<Left>
 inoremap " ""<Left>
 inoremap { {}<Left>
+inoremap < <><Left>
 inoremap [[ [
 inoremap (( (
 inoremap '' '
 inoremap "" "
 inoremap {{ {
+inoremap << <
 nnoremap <c-q> :vim /\c/ **/*<Left><Left><Left><Left><Left><Left>
 "" Conflicts with incrementing a number
 " nnoremap <c-a> :Texvim 
@@ -234,6 +238,15 @@ function! SelectLatexEnvironment(offset)
     endif
     execute 'normal! ' . (start_line + a:offset) . 'GV' . (end_line - a:offset) . 'G'
 endfunction
+
+
+augroup pythonCustomMappings
+	autocmd!
+	autocmd FileType python vmap <C-R> :normal 0i# <CR>gv
+
+	autocmd FileType python vmap <C-T> :s/^\s*\zs#\s//<CR>:noh<CR>gvh 
+augroup END
+
 "
 " Function to cycle through available colorschemes
 function! CycleColorschemes(direction)
@@ -269,12 +282,80 @@ nnoremap <F7> :call CycleColorschemes('prev')<CR>
 set expandtab tabstop=4 softtabstop=4 shiftwidth=4
 
 
+"================================================
 "================= LSP Settings =================
-let g:lsp_settings_filetype_python = ['basedpyright-langserver', 'ruff'] 
+"================================================
 
-" Defer hover to Pyright, not Ruff
+" FIXME: This is probably a messy solution and may cause unexpected issues.
+" Some vim-lsp popup windows seem to close automatically after a set amount of
+" time defined by the updatetime variable. Setting this variable to 0 solves
+" the issue, but since it is involved in other operations it is probably
+" better to leave it unchanged. Removing the CursorHold event from vim-lsp
+" definitions seems to solve the issue.
+function! RemoveVimLspCursorHold() abort
+    let l:acs = autocmd_get({'event': 'CursorHold'})
+
+    for l:ac in l:acs
+        if l:ac.group =~# '^__callbag_fromEvent_prefix_\d\+__$'
+            call autocmd_delete([{
+                \ 'group': l:ac.group,
+                \ 'event': 'CursorHold',
+                \ 'pattern': l:ac.pattern,
+                \ }])
+        endif
+    endfor
+endfunction
+augroup my_lsp_cleanup
+    autocmd!
+    autocmd User lsp_buffer_enabled call RemoveVimLspCursorHold()
+augroup END
+
+
+
+
+let g:lsp_settings_filetype_python = ['basedpyright-langserver', 'ruff'] 
+" let g:lsp_settings_filetype_python = ['jedi-language-server', 'ruff'] 
+
 
 " let g:lsp_settings_filetype_python = ['basedpyright-langserver', 'pylsp-all'] 
+
+
+
+"================ Improve documentation popup formatting. ================
+function! s:python_plaintext_lsp_capabilities(server_info) abort
+  let l:cap = lsp#default_get_supported_capabilities(a:server_info)
+  let l:name = get(a:server_info, 'name', '')
+
+  " Apply only to Python language servers, especially basedpyright/pyright/jedi.
+  if l:name =~# '\v(basedpyright|pyright|jedi)'
+    " Hover: :LspHover
+    let l:cap.textDocument.hover.contentFormat = ['plaintext']
+  endif
+
+  return l:cap
+endfunction
+
+let g:lsp_get_supported_capabilities = [function('s:python_plaintext_lsp_capabilities')]
+
+" Then color hover popup as Python
+augroup lsp_hover_python_syntax
+  autocmd!
+  autocmd User lsp_float_opened call s:lsp_hover_python_syntax()
+  autocmd User lsp_float_opened call timer_start(1, {-> s:lsp_hover_python_syntax()})
+augroup END
+
+function! s:lsp_hover_python_syntax() abort
+  let l:winid = lsp#document_hover_preview_winid()
+  if l:winid <= 0
+    return
+  endif
+
+  let l:bufnr = winbufnr(l:winid)
+
+  call setbufvar(l:bufnr, '&syntax', 'python')
+endfunction
+"=========================================================================
+
 
 " Disable all language servers by default
 " let g:lsp_settings = {
@@ -315,16 +396,27 @@ let g:lsp_settings = {
 " endif
  
 
-
+augroup lsp_preview_formatting
+  autocmd!
+  autocmd FileType markdown setlocal conceallevel=0
+  autocmd FileType markdown setlocal tabstop=4 shiftwidth=4
+  autocmd FileType markdown setlocal wrap linebreak breakindent
+augroup END
 let g:lsp_diagnostics_enabled = 1
 let g:lsp_diagnostics_echo_cursor = 1
 let g:lsp_diagnostics_float_cursor = 1
+
 " Disable messages showing within the main window
 let g:lsp_diagnostics_virtual_text_enabled=0
+
+" Keep floating windows bigger when vim window is not wide enough
+let g:lsp_float_max_width = 90
+
 function! s:on_lsp_buffer_enabled() abort
     setlocal omnifunc=lsp#complete
     setlocal signcolumn=yes
 
+" Defer hover to Pyright, not Ruff
     if &filetype ==# 'python'
         let l:cap = lsp#get_server_capabilities('ruff')
         if !empty(l:cap)
@@ -339,14 +431,29 @@ function! s:on_lsp_buffer_enabled() abort
     nmap <buffer> gS <plug>(lsp-workspace-symbol-search)
     nmap <buffer> gr <plug>(lsp-references)
     nmap <buffer> gi <plug>(lsp-implementation)
-    nmap <buffer> gt <plug>(lsp-type-definition)
+    nmap <buffer> <leader>gt <plug>(lsp-type-definition)
     nmap <buffer> <leader>rn <plug>(lsp-rename)
     nmap <buffer> [g <plug>(lsp-previous-diagnostic)
     nmap <buffer> ]g <plug>(lsp-next-diagnostic)
     nmap <buffer> K <plug>(lsp-hover)
+    nmap <buffer> <C-k> <plug>(lsp-hover-preview)
+    nmap <buffer> <leader>ca <plug>(lsp-code-action)
     nnoremap <buffer> <leader>b <Cmd>silent w \| LspDocumentBuild<CR>
-    nnoremap <buffer> <expr><leader>d lsp#scroll(+4)
-    nnoremap <buffer> <expr><leader>u lsp#scroll(-4)
+    nnoremap <buffer> <leader>B <Cmd>silent w \| LspDocumentBuildCurrent <CR>
+
+
+    " When popup exists, scroll within the popup instead of the buffer itself
+    nnoremap <expr><buffer> <C-e> popup_list()->empty() ? "\<C-e>" : lsp#scroll(1)
+    nnoremap <expr><buffer> <C-y> popup_list()->empty() ? "\<C-y>" : lsp#scroll(-1)
+    nnoremap <expr><buffer> <C-d> popup_list()->empty() ? "\<C-d>" : lsp#scroll(10)
+    nnoremap <expr><buffer> <C-u> popup_list()->empty() ? "\<C-u>" : lsp#scroll(-10)
+
+inoremap <expr> <C-c> pumvisible() ? "\<C-e>" : "\<C-c>"
+    " Insert mode: autocomplete popup/menu
+    inoremap <expr><buffer> <C-e> popup_list()->empty() ? "\<C-e>" : lsp#scroll(1)
+    inoremap <expr><buffer> <C-y> popup_list()->empty() ? "\<C-y>" : lsp#scroll(-1)
+    inoremap <expr><buffer> <C-d> popup_list()->empty() ? "\<C-d>" : lsp#scroll(10)
+    inoremap <expr><buffer> <C-u> popup_list()->empty() ? "\<C-u>" : lsp#scroll(-10)
 
     let g:lsp_format_sync_timeout = 1000
     autocmd! BufWritePre *.rs,*.go call execute('LspDocumentFormatSync')
@@ -359,7 +466,12 @@ augroup lsp_install
     " call s:on_lsp_buffer_enabled only for languages that has the server registered.
     autocmd User lsp_buffer_enabled call s:on_lsp_buffer_enabled()
 augroup END
-"================= LSP Settings (END) =================
+"================================================
+"============== LSP Settings (END) ==============
+"================================================
+
+
+
 
 " Show the differences compared to the file on disk
 command! DiffSaved
@@ -367,7 +479,7 @@ command! DiffSaved
   \ vert new |
   \ read ++edit # |
   \ 0d_ |
-  \ setlocal buftype=nowrite bufhidden=wipe noswapfile |
+  \ setlocal buftype=nofile bufhidden=wipe noswapfile |
   \ execute 'setlocal filetype=' .. s:ft |
   \ diffthis |
   \ setlocal nocursorline |
@@ -375,6 +487,8 @@ command! DiffSaved
   \ setlocal nocursorline |
   \ diffthis |
   \ wincmd p
+
+nnoremap <leader>d :DiffSaved<cr>
 
 
 augroup DiffNoCursorline
@@ -386,12 +500,118 @@ augroup END
 
 
 "================= Async complete setup =================
+let g:asyncomplete_matchfuzzy = 0
 set completeopt=menu,noinsert
-inoremap <silent> <leader><Tab> <C-x><C-o>
+inoremap <silent> <leader><Tab> <cmd>call <SID>AsynReopenAfterDelete()<cr>
 inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
 inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+
+" Select current completion and close popup
 inoremap <expr> <cr>    pumvisible() ? asyncomplete#close_popup() : "\<cr>"
 let g:asyncomplete_auto_popup = 0
+
+
+
+
+function! s:ToggleAsyncompleteFuzzy() abort
+  let g:asyncomplete_matchfuzzy = !get(g:, 'asyncomplete_matchfuzzy', exists('*matchfuzzypos'))
+
+  if g:asyncomplete_matchfuzzy
+    echo 'asyncomplete fuzzy matching: ON'
+  else
+    echo 'asyncomplete fuzzy matching: OFF'
+  endif
+
+  if mode() ==# 'i'
+    call <SID>AsynReopenAfterDelete()
+  endif
+endfunction
+
+nnoremap <leader>fz <Cmd>call <SID>ToggleAsyncompleteFuzzy()<CR>
+inoremap <leader>fz <Cmd>call <SID>ToggleAsyncompleteFuzzy()<CR>
+
+
+
+
+
+
+
+
+
+" let s:asyncomplete_reopen_timer = -1
+" 
+" function! s:ScheduleAsyncReopenAfterTyping() abort
+"   if mode() !=# 'i'
+"     return
+"   endif
+" 
+"   if !pumvisible()
+"     return
+"   endif
+" 
+"   if s:asyncomplete_reopen_timer != -1
+"     call timer_stop(s:asyncomplete_reopen_timer)
+"   endif
+" 
+"   let s:asyncomplete_reopen_timer =
+"         \ timer_start(20, {-> s:DoAsyncReopenAfterTyping()})
+" endfunction
+" 
+" function! s:DoAsyncReopenAfterTyping() abort
+"   let s:asyncomplete_reopen_timer = -1
+" 
+"   if mode() ==# 'i' && pumvisible()
+"     call feedkeys(asyncomplete#force_refresh(), 'm')
+"   endif
+" endfunction
+" 
+" augroup asyncomplete_reopen_while_typing
+"   autocmd!
+"   autocmd TextChangedP * call s:ScheduleAsyncReopenAfterTyping()
+" augroup END
+
+
+
+
+let s:asyncomplete_reopen_timer = -1
+
+function! s:ScheduleAsyncReopenForTypedChar() abort
+  " Only while autocomplete popup menu is visible.
+  if !pumvisible()
+    return
+  endif
+
+  " Do not trigger for Tab / Enter-like characters.
+  if v:char ==# "\t" || v:char ==# "\r" || v:char ==# "\n"
+    return
+  endif
+
+  " Ignore other control characters.
+  if strlen(v:char) == 1 && char2nr(v:char) < 32
+    return
+  endif
+
+  if s:asyncomplete_reopen_timer != -1
+    call timer_stop(s:asyncomplete_reopen_timer)
+  endif
+
+  let s:asyncomplete_reopen_timer =
+        \ timer_start(20, {-> s:DoAsyncReopenAfterTyping()})
+endfunction
+
+function! s:DoAsyncReopenAfterTyping() abort
+  let s:asyncomplete_reopen_timer = -1
+
+  if mode() ==# 'i' && pumvisible()
+    call feedkeys(asyncomplete#force_refresh(), 'm')
+  endif
+endfunction
+
+augroup asyncomplete_reopen_while_typing
+  autocmd!
+  autocmd InsertCharPre * call s:ScheduleAsyncReopenForTypedChar()
+augroup END
+
 
 
 function! s:ACRefresh() abort
@@ -407,6 +627,7 @@ function! s:AsynReopenAfterDelete() abort
   return ''
 endfunction
 
+
 inoremap <silent><expr> <BS>
       \ pumvisible()
       \ ? "\<BS>\<C-r>=<SID>AsynReopenAfterDelete()\<CR>"
@@ -415,7 +636,7 @@ inoremap <silent><expr> <BS>
 inoremap <silent><expr> <C-h>
       \ pumvisible()
       \ ? "\<BS>\<C-r>=<SID>AsynReopenAfterDelete()\<CR>"
-      \ : "\<BS>"
+      \ : "\<BS>
 
 inoremap <silent><expr> <C-w>
       \ pumvisible()
@@ -427,7 +648,7 @@ inoremap <silent><expr> <C-w>
 
 "================= QuickFix list autojump =================
 augroup QuickFix
- au FileType qf nnoremap <buffer> <silent> j :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> j<cr>zv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
- au FileType qf nnoremap <buffer> <silent> k :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> k<cr>zv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
+ au FileType qf nnoremap <buffer> <silent> j :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> j<cr>zzzv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
+ au FileType qf nnoremap <buffer> <silent> k :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> k<cr>zzzv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
 augroup END
 "================= QuickFix list autojump (END) =================
