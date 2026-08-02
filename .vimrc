@@ -60,11 +60,12 @@ Plug 'puremourning/vimspector'
 call plug#end()
 
 
-
-let &t_ti.="\e[2 q"
-let &t_SI.="\e[2 q"
-let &t_EI.="\e[2 q"
-let &t_te.="\e[2 q"
+let s:cursor_style = "\e[2 q\e]12;#426963\x07"
+let &t_ti.=s:cursor_style
+let &t_SI.=s:cursor_style
+let &t_EI.=s:cursor_style
+" Keep the same cursor appearance after Vim exits.
+let &t_te.=s:cursor_style
 
 
 nmap <F6> :IndentLinesToggle<CR>
@@ -116,6 +117,10 @@ inoremap { {}<Left>
 inoremap < <><Left>
 inoremap [[ [
 inoremap (( (
+inoremap () ()
+inoremap [] []
+inoremap {} {}
+inoremap <> <>
 inoremap '' '
 inoremap "" "
 inoremap {{ {
@@ -197,6 +202,12 @@ augroup matlabCustomMappings
 	autocmd FileType matlab :set textwidth=75
 	autocmd FileType matlab set path+=**
 	let g:MATLAB_function_indent = 1
+augroup END
+
+augroup vimCustomMappings
+	autocmd!
+	autocmd FileType vim vmap <C-R> :normal 0i"" <CR>gv
+	autocmd FileType vim vmap <C-T> :s/^\s*\zs"\s//<CR>:noh<CR>gvh 
 augroup END
 
 augroup	latexCustomMappings
@@ -404,13 +415,23 @@ augroup lsp_preview_formatting
 augroup END
 let g:lsp_diagnostics_enabled = 1
 let g:lsp_diagnostics_echo_cursor = 1
-let g:lsp_diagnostics_float_cursor = 1
+let g:lsp_diagnostics_float_cursor = 0
 
 " Disable messages showing within the main window
-let g:lsp_diagnostics_virtual_text_enabled=0
+let g:lsp_diagnostics_virtual_text_enabled = 0
 
 " Keep floating windows bigger when vim window is not wide enough
 let g:lsp_float_max_width = 90
+
+
+" Prevent vim-lsp from taking over <C-c>.
+ nmap <silent><buffer> <Plug>(MyLspFloatCloseGuard) <Plug>(lsp-float-close)
+
+" FIXME: This may be too broad and may have unexpected side effects 
+" Diagnostic messages do not close using <C-c> by default
+" nnoremap <silent> <C-c> :call popup_clear()<CR><C-c>
+nnoremap <expr><buffer> <C-c> popup_list()->empty() ? "\<C-c>" : "\<Cmd> call popup_clear()\<CR>"
+
 
 function! s:on_lsp_buffer_enabled() abort
     setlocal omnifunc=lsp#complete
@@ -440,7 +461,7 @@ function! s:on_lsp_buffer_enabled() abort
     nmap <buffer> <leader>ca <plug>(lsp-code-action)
     nnoremap <buffer> <leader>b <Cmd>silent w \| LspDocumentBuild<CR>
     nnoremap <buffer> <leader>B <Cmd>silent w \| LspDocumentBuildCurrent <CR>
-
+    nnoremap <buffer> <leader>v <Cmd>call ToggleLspVirtualText()<CR>
 
     " When popup exists, scroll within the popup instead of the buffer itself
     nnoremap <expr><buffer> <C-e> popup_list()->empty() ? "\<C-e>" : lsp#scroll(1)
@@ -448,7 +469,8 @@ function! s:on_lsp_buffer_enabled() abort
     nnoremap <expr><buffer> <C-d> popup_list()->empty() ? "\<C-d>" : lsp#scroll(10)
     nnoremap <expr><buffer> <C-u> popup_list()->empty() ? "\<C-u>" : lsp#scroll(-10)
 
-inoremap <expr> <C-c> pumvisible() ? "\<C-e>" : "\<C-c>"
+    inoremap <expr> <C-c> pumvisible() ? "\<C-e>" : "\<C-c>"
+    
     " Insert mode: autocomplete popup/menu
     inoremap <expr><buffer> <C-e> popup_list()->empty() ? "\<C-e>" : lsp#scroll(1)
     inoremap <expr><buffer> <C-y> popup_list()->empty() ? "\<C-y>" : lsp#scroll(-1)
@@ -457,7 +479,30 @@ inoremap <expr> <C-c> pumvisible() ? "\<C-e>" : "\<C-c>"
 
     let g:lsp_format_sync_timeout = 1000
     autocmd! BufWritePre *.rs,*.go call execute('LspDocumentFormatSync')
-    
+   
+    " TODO: make a pull request to add this functionality. The need for
+    " InsertLeave should also probably be mitigated in the final
+    " implementation
+"     function! ToggleLspVirtualText()
+"         if g:lsp_diagnostics_virtual_text_enabled
+"             let g:lsp_diagnostics_virtual_text_enabled = 0
+"             call lsp#internal#diagnostics#virtual_text#_disable()
+"         else
+"             let g:lsp_diagnostics_virtual_text_enabled = 1
+"             call lsp#internal#diagnostics#virtual_text#_enable()
+"             call lsp#internal#diagnostics#state#_force_notify_buffer(bufnr('%'))
+"             " doautocmd <nomodeline> InsertLeave
+"         endif
+"     endfunction
+
+    function! ToggleLspVirtualText()
+        if g:lsp_diagnostics_virtual_text_enabled
+            call lsp#disable_diagnostics_virtual_text()
+        else
+            call lsp#enable_diagnostics_virtual_text()
+        endif
+    endfunction
+
     " refer to doc to add more commands
 endfunction
 
@@ -652,3 +697,140 @@ augroup QuickFix
  au FileType qf nnoremap <buffer> <silent> k :set eventignore+=BufEnter,FocusGained,InsertLeave,WinEnter<cr> k<cr>zzzv :set eventignore-=BufEnter,FocusGained,InsertLeave,WinEnter<cr> <c-w>p 
 augroup END
 "================= QuickFix list autojump (END) =================
+
+
+
+let g:codex_buf = -1
+
+function! CodexOpen()
+    " Codex buffer doesn't exist anymore: start a new one.
+    if g:codex_buf == -1 || !bufexists(g:codex_buf)
+        topleft vertical terminal codex
+        execute 'vertical resize ' . (&columns / 4)
+        let g:codex_buf = bufnr('%')
+        wincmd p
+        return
+    endif
+
+    " Codex exists and is already visible.
+    if bufwinid(g:codex_buf) != -1
+        return
+    endif
+
+    " Codex exists but is hidden: show the existing terminal buffer.
+    execute 'vertical sbuffer ' . g:codex_buf
+    wincmd p
+endfunction
+
+
+function! CodexHide()
+    if g:codex_buf == -1 || !bufexists(g:codex_buf)
+        return
+    endif
+
+    let winid = bufwinid(g:codex_buf)
+
+    if winid != -1
+        call win_execute(winid, 'hide')
+    endif
+endfunction
+
+function! CodexAsk() abort
+    " Start/show Codex if necessary.
+    if g:codex_buf == -1
+                \ || !bufexists(g:codex_buf)
+                \ || bufwinid(g:codex_buf) == -1
+        call CodexOpen()
+    endif
+
+    " Make sure we're back in Normal mode in the editing window.
+    stopinsert
+
+    let question = input('Codex: ')
+
+    if empty(question)
+        return
+    endif
+
+    let file = expand('%:p')
+    let lineno = line('.')
+    let column = col('.')
+    let word = expand('<cword>')
+
+    let prompt = printf(
+        \ "I'm referring to %s:%d:%d, with my cursor on `%s`. %s",
+        \ file,
+        \ lineno,
+        \ column,
+        \ word,
+        \ question
+        \ )
+
+    call term_sendkeys(g:codex_buf, prompt)
+    call timer_start(100, {-> term_sendkeys(g:codex_buf, "\<CR>")})
+endfunction
+
+command! CodexOpen call CodexOpen()
+command! CodexHide call CodexHide()
+command! CodexAsk  call CodexAsk()
+
+augroup CodexResize
+    autocmd!
+    autocmd VimResized * call CodexResize()
+augroup END
+
+function! CodexResize()
+    if g:codex_buf == -1 || !bufexists(g:codex_buf)
+        return
+    endif
+
+    let winid = bufwinid(g:codex_buf)
+
+    if winid != -1
+        call win_execute(
+            \ winid,
+            \ 'vertical resize ' . (&columns / 4)
+            \ )
+    endif
+endfunction
+
+function! CodexFixLayout() abort
+    if g:codex_buf == -1 || !bufexists(g:codex_buf)
+        return
+    endif
+
+    let l:winid = bufwinid(g:codex_buf)
+
+    " Codex is currently hidden.
+    if l:winid == -1
+        return
+    endif
+
+    " Force Codex to be the outermost full-height left window.
+    call win_execute(l:winid, 'wincmd H')
+
+    " Keep it at one quarter of Vim's total width.
+    call win_execute(
+        \ l:winid,
+        \ 'vertical resize ' . (&columns / 4)
+        \ )
+endfunction
+
+augroup CodexLayout
+    autocmd!
+    autocmd WinNew * call timer_start(0, {-> CodexFixLayout()})
+    autocmd VimResized * call CodexFixLayout()
+augroup END
+
+
+nnoremap <leader>] :VimCodexMcpAsk<CR>
+nnoremap <leader>[ :VimCodexMcpToggle<CR>
+
+set runtimepath^=/home/gtsitsikas/tmp/vim_codex/vim
+
+
+nmap ]a <Plug>(VimCodexMcpNextMessage)
+nmap [a <Plug>(VimCodexMcpPreviousMessage)
+
+
+nnoremap <leader>t :UndotreeToggle<CR>:UndotreeFocus<CR>
